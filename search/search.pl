@@ -1,45 +1,46 @@
-% Base case: The treasure is found.
-search([Room]) :-
-    treasure(Room).
+% Initialize explorer with starting position and empty bag
+initiate_journey(explorer(Position, Bag)) :-
+    initial(Position),
+    Bag = [].
 
-% Recursive case: Expand paths and search for the treasure.
-search(Path) :-
-    start(StartRoom),
-    bfs([[StartRoom]], Path).
+% Handle moving through regular doors (bidirectional)
+advance(explorer(Current, Bag), move(Current, Next), explorer(Next, Bag)) :-
+    door(Current, Next).
+advance(explorer(Current, Bag), move(Current, Next), explorer(Next, Bag)) :-
+    door(Next, Current).
 
-% Breadth-first search to find the shortest path.
-bfs([[Room | Path] | _], [Room | Path]) :-
-    treasure(Room).
+% Handle collecting keys when entering a room
+advance(explorer(Current, Bag), move(Current, Next), explorer(Next, UpdatedBag)) :-
+    (door(Current, Next) ; door(Next, Current)),
+    key(Next, Key),
+    \+ member(Key, Bag),
+    UpdatedBag = [Key|Bag].
 
-bfs([[Room | Path] | Rest], Solution) :-
-    findall(
-        [NextRoom, Room | Path],
-        (door(Room, NextRoom),
-         \+ member(NextRoom, [Room | Path]),
-         is_accessible(Room, NextRoom)),
-        NewPaths),
-    append(Rest, NewPaths, UpdatedPaths),
-    bfs(UpdatedPaths, Solution).
+% Handle locked doors (bidirectional)
+advance(explorer(Current, Bag), move(Current, Next), explorer(Next, Bag)) :-
+    locked_door(Current, Next, Key),
+    member(Key, Bag).
+advance(explorer(Current, Bag), move(Current, Next), explorer(Next, Bag)) :-
+    locked_door(Next, Current, Key),
+    member(Key, Bag).
 
-% Check if a move is accessible (key collected if needed).
-is_accessible(CurrentRoom, NextRoom) :-
-    \+ locked(CurrentRoom, NextRoom); % No lock or
-    (locked(CurrentRoom, NextRoom),
-     key_required(CurrentRoom, NextRoom, Key),
-     has_key(Key)).
+% Check if we've reached the treasure
+goal_reached(explorer(Position, _)) :-
+    treasure(Position).
 
-% Check if a door is locked.
-locked(_, Room2) :-
-    key(Room2, _).
+% Process a single move
+journey_step(Start, [Move], Result) :-
+    advance(Start, Move, Result).
 
-% Check which key is required to unlock a door.
-key_required(_, Room2, Key) :-
-    key(Room2, Key).
+% Process multiple moves
+journey_step(Start, [Move | RestActions], End) :-
+    advance(Start, Move, MidPoint),
+    journey_step(MidPoint, RestActions, End).
 
-% Check if the key is already collected.
-has_key(Key) :-
-    collected_keys(Keys),
-    member(Key, Keys).
-
-% Collected keys (for dynamic tracking, modify as needed).
-collected_keys([]).
+% Main search predicate
+search(Actions) :-
+    initiate_journey(Start),
+    length(Actions, _),  % Generate potential path lengths
+    journey_step(Start, Actions, End),
+    goal_reached(End),
+    !.  % Cut to prevent backtracking once solution is found
